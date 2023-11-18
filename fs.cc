@@ -20,13 +20,13 @@ void INE5412_FS::fs_debug()
 
 	int n_inodeBlocks = block.super.ninodeblocks;
 
-	/* Iterate over blocks reserved to store inodes */
+	/* Iterates over blocks reserved to store inodes */
 	for (int i = 0; i < n_inodeBlocks; i++)
 	{
 		/* Reads block i+1 of disk and puts into block variable. */
 		disk->read(i + 1, block.data);
 
-		/* Iterave over inodes of the current block */
+		/* Iterates over inodes of the current block */
 		for (int j = 0; j < INODES_PER_BLOCK; j++)
 		{
 			if (block.inode[j].isvalid)
@@ -37,7 +37,7 @@ void INE5412_FS::fs_debug()
 
 				//////// 2. PRINT INODE DIRECT BLOCKS INFO ////////
 				cout << "    direct blocks: ";
-				/* Iterate over direct blocks */
+				/* Iterates over direct blocks */
 				for (int k = 0; k < POINTERS_PER_INODE; k++)
 				{
 					std::cout << block.inode[j].direct[k] << " ";
@@ -45,11 +45,12 @@ void INE5412_FS::fs_debug()
 				cout << endl;
 
 				//////// 3. PRINT INODE INDIRECT BLOCKS INFO ////////
-				if (block.inode->indirect != 0)
+				if (block.inode[j].indirect != 0)
 				{
 					cout << "    indirect block: " << block.inode[j].indirect << endl;
 					cout << "    indirect data blocks: ";
-					/* Read and iterate over indirect blocks */
+					// /* Reads and iterates over indirect blocks */
+					// WARNING: this read() makes inode 3 to not showup in the logs anymore
 					disk->read(block.inode[j].indirect, block.data);
 					for (int k = 0; k < POINTERS_PER_BLOCK; k++)
 					{
@@ -58,6 +59,7 @@ void INE5412_FS::fs_debug()
 					}
 					cout << endl;
 				}
+				cout << endl;
 			}
 		}
 	}
