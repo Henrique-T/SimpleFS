@@ -7,6 +7,10 @@
 
 using namespace std;
 
+/*My initial thoughts:
+* 1. The bitmap should be declared here.
+* 1.1 Every time the disk is mounted, the system should build a new bitmap.
+*/
 class Disk
 {
 public:

@@ -1,9 +1,12 @@
 #include "fs.h"
+#include <cmath>
 
 int INE5412_FS::fs_format()
 {
-	bool isMounted = true;
-	int diskSize = disk->size();
+
+	/*
+	* Rebuild all the blocks: super, inodes and data.
+	*/
 
 	/* Checks if the file system is already mounted */
 	if (isMounted)
@@ -12,22 +15,14 @@ int INE5412_FS::fs_format()
 		return 0;
 	}
 
-	/* Calculates the number of blocks reserved for inodes (10% of total blocks) */
-	int n_inodeBlocks = diskSize * 0.1;
+	int diskSize = disk->size();
 
-	/* Clears data on the disk (write zeros to all blocks) */
-	for (int i = 0; i < diskSize; ++i)
-	{
-		disk->write(i, 0);
-	}
+	/* Calculates the number of blocks reserved for inodes (10% of total blocks),
+	* rounded up.
+	*/
+	int n_inodeBlocks = std::ceil(diskSize * 0.1) + 1;
 
-	/* Reserves blocks for inodes (mark as allocated) */
-	for (int i = 0; i <= n_inodeBlocks; ++i)
-	{
-		//disk->markBlockAllocated(i);
-	}
-
-	/* Initializes and writes the superblock */
+	/* Initializes and writes the superblock -> first block of the disk */
 	fs_superblock superblock;
 	superblock.magic = FS_MAGIC;
 	superblock.nblocks = diskSize;
@@ -38,27 +33,33 @@ int INE5412_FS::fs_format()
 	superblockUnion.super = superblock;
 	disk->write(0, superblockUnion.data);
 
-	/*WARNING: This is only the initial sketch for how we'd handle the bitmap.
-	* The bitmap should be declared in the disk files
+	/* Following the n_inodeBlocks, it sets each inode to the default values.
+	* Iterates over disk blocks reserved for inodes.
 	*/
+	for (int i = 1; i <= n_inodeBlocks + 1; ++i)
+	{
+		union fs_block block;
 
-	/* Builds a new bitmap and writes it to the disk */
-	// int bitmapSize = diskSize / 8;		   // Assuming one byte per block
-	// char *bitmap = new char[bitmapSize](); // Initialize with zeros
+		/* Iterates over each inode in the current block */
+		for (int j = 0; j < INODES_PER_BLOCK; j++)
+		{
+			block.inode[j].isvalid = 0;
+			block.inode[j].size = 0;
 
-	/*  Marks allocated blocks in the bitmap */
-	// for (int i = 0; i <= n_inodeBlocks; ++i)
-	// {
-	// 	//setBit(bitmap, i);
-	// }
+			/* Iterates over each pointer in current inode  and sets the direct pointers */
+			for (int k = 0; k < POINTERS_PER_INODE; k++)
+			{
+				block.inode[j].direct[k] = 0;
+			}
 
-	/* Writes the bitmap to the disk */
-	// disk->write(1, bitmap); // Assuming the bitmap starts from block 1
+			/* Sets inderect pointer */
+			block.inode[j].indirect = 0;
+		}
+		disk->write(i, block.data);
+	}
 
-	/* Cleans up allocated memory*/
-	// delete[] bitmap;
+	/*TODO: Initialize and set bitmap */
 
-	// Return success
 	return 1;
 }
 

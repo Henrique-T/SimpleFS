@@ -3,11 +3,6 @@
 
 #include "disk.h"
 
-/*My initial thoughts:
-* 1. The bitmap should be declared here.
-* 1.1 EVery time the disk is mounted(?), the system should build a new bitmap.
-*/
-
 class INE5412_FS
 {
 public:
@@ -73,6 +68,7 @@ public:
 
 private:
 	Disk *disk;
+	bool isMounted = false;
 };
 
 #endif
