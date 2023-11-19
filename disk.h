@@ -16,10 +16,6 @@ public:
 	Disk(const char *filename, int nblocks);
 
 	int size();
-	/* Toda vez que vocˆe
-	 *  invocar um read ou write, vocˆe deve se assegurar 
-	 *	de que data aponte para 4 KB completos de mem´oria.
-	*/
 	void read(int blocknum, char *data);
 	void write(int blocknum, const char *data);
 	void close();
