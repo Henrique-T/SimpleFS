@@ -17,7 +17,6 @@ class Disk
 public:
 	static const unsigned short int DISK_BLOCK_SIZE = 4096;
 	static const unsigned int DISK_MAGIC = 0xdeadbeef;
-	vector<bool> bitmap;
 
 	Disk(const char *filename, int nblocks);
 
@@ -25,7 +24,6 @@ public:
 	void read(int blocknum, char *data);
 	void write(int blocknum, const char *data);
 	void close();
-	void setBitMap();
 
 private:
 	void sanity_check(int blocknum, const void *data);

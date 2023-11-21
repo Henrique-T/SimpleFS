@@ -91,13 +91,3 @@ void Disk::close()
 		diskfile = 0;
 	}
 }
-
-void Disk::setBitMap()
-{
-	/* Sets the size of bitmap = number of blocks */
-	bitmap.resize(nblocks + 1);
-	/* TODO:
-	1. first block is the superblock. Therefore it's being used, therefore it's a 1.
-	2. FOr the rest is zero.
-	*/
-}
