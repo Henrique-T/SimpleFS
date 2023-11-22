@@ -202,7 +202,17 @@ int INE5412_FS::fs_delete(int inumber)
 
 int INE5412_FS::fs_getsize(int inumber)
 {
-	// QUESTION: do we need to verify if the disk is not mounted?
+	if (!isMounted)
+	{
+		cout << "Error: File system is not mounted. Cannot get size." << endl;
+		return 0;
+	}
+
+	if (inumber < 0)
+	{
+		cout << "Error: Inumber is not valid. " << endl;
+		return 0;
+	}
 
 	/* Gets the number of the block that holds the inode */
 	int blockNumber = 1 + inumber / INODES_PER_BLOCK;
