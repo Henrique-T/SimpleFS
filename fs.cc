@@ -133,9 +133,71 @@ int INE5412_FS::fs_create()
 	return 0;
 }
 
+/*
+Set isValid = false;
+Set direct pointers = 0;
+Reset indirect vector with 0s;
+Set size = 0;
+Free all data and indirect blocks data - How to do this?
+Update bitmap accordindly - How to do this?
+*/
 int INE5412_FS::fs_delete(int inumber)
 {
-	return 0;
+
+	/*TODO: Check if we need any more validations */
+	if (!isMounted)
+	{
+		cout << "Error: File system is not mounted. Cannot delete." << endl;
+		return 0;
+	}
+
+	if (inumber < 0)
+	{
+		cout << "Error: Inumber is not valid. " << endl;
+		return 0;
+	}
+
+	union fs_block block;
+
+	/* Reads and stores superblock to block variable */
+	disk->read(0, block.data);
+
+	int n_inodeBlocks = block.super.ninodeblocks;
+
+	/* Iterates over disk blocks reserved to inodes */
+	for (int i = 0; i < n_inodeBlocks; i++)
+	{
+		disk->read(i + 1, block.data);
+
+		/*Iterates over inodes*/
+		for (int j = 0; j < INODES_PER_BLOCK; j++)
+		{
+			if (j == inumber)
+			{
+				/* Inode is found */
+				block.inode[j].isvalid = 0;
+				block.inode[j].size = 0; /* QUESTION: Is it a problem to update size here?*/
+
+				/* Iterates over direct pointers in inode and set them to zero */
+				for (int k = 0; k < POINTERS_PER_INODE; k++)
+				{
+					block.inode[j].direct[k] = 0;
+				}
+
+				if (block.inode[j].indirect != 0)
+				{
+					disk->read(block.inode[j].indirect, block.data);
+
+					/* Iterates over indirect blocks and set them to zero */
+					for (int k = 0; k < POINTERS_PER_BLOCK; k++)
+					{
+						block.pointers[k] = 0;
+					}
+				}
+			}
+		}
+	}
+	return 1;
 }
 
 int INE5412_FS::fs_getsize(int inumber)
