@@ -68,7 +68,7 @@ public:
 
 	/* Helper functions */
 	void instantiate_bitmap();
-	void set_bitmap_bit_by_index(int index);
+	void set_bitmap_bit_by_index(bool bit, int index);
 
 private:
 	Disk *disk;
