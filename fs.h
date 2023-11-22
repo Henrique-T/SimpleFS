@@ -66,9 +66,14 @@ public:
 	int fs_read(int inumber, char *data, int length, int offset);
 	int fs_write(int inumber, const char *data, int length, int offset);
 
+	/* Helper functions */
+	void instantiate_bitmap();
+	void set_bitmap_bit_by_index(int index);
+
 private:
 	Disk *disk;
 	bool isMounted = false;
+	std::vector<bool> bitmap;
 };
 
 #endif
