@@ -309,6 +309,11 @@ int INE5412_FS::fs_delete(int inumber)
 
 	int numberOfInodeBlocks = superblock.super.ninodeblocks;
 
+	if (inumber > superblock.super.ninodes) {
+		cout << "Inumber is invalid. (bigger than the amount of inodes.)" << endl;
+		return 0;
+	}
+
 	bool wasInodeFound = false;
 	/* Iterates over disk blocks reserved to inodes */
 	for (int i = 0; i < numberOfInodeBlocks; i++)
@@ -379,23 +384,39 @@ int INE5412_FS::fs_delete(int inumber)
 
 int INE5412_FS::fs_getsize(int inumber)
 {
-	// QUESTION: do we need to verify if the disk is not mounted?
+	if (!isMounted) {
+		cout << "File System is not yet mounted!";
+		return -1;
+	}
 
-	/* Gets the number of the block that holds the inode */
-	int blockNumber = 1 + inumber / INODES_PER_BLOCK;
+	union fs_block superblock;
+	/* Reads and stores superblock to block variable */
+	disk->read(0, superblock.data);
 
-	/* Gets the index of the inode inside the block 
-	* The % operation simulates a circular list.
-	*/
-	int inodeIndex = inumber % INODES_PER_BLOCK;
+	if (inumber > superblock.super.ninodes || inumber == 0) {
+		cout << "Inumber is invalid. (bigger than the amount of inodes or equals to 0.)" << endl;
+		return -1;
+	}
+
+	/* 
+	Finds the exact block and inode index inside of this block
+	This operation will always be valid since we already checked if inumber is valid
+	 */
+	int blockIndex = 1 + inumber / INODES_PER_BLOCK;
+	/* Adding one to the modulo since inumbers always start in 1 */
+	int inodeIndexInBlock = (inumber - 1) % INODES_PER_BLOCK;
 
 	/* Reads the block and stores in block.data */
-	union fs_block block;
-	disk->read(blockNumber, block.data);
+	union fs_block blockWithInode;
+	disk->read(blockIndex, blockWithInode.data);
 
-	/* Gets inode and does validation */
-	fs_inode inode = block.inode[inodeIndex];
-	return (inode.isvalid != 1) ? -1 : inode.size;
+	/* Gets the exact inode requested by the inumber */
+	fs_inode inode = blockWithInode.inode[inodeIndexInBlock];
+	if (inode.isvalid)
+	{
+		return inode.size;
+	}
+	return -1;
 }
 
 int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
