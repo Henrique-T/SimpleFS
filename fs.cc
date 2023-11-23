@@ -1,5 +1,6 @@
 #include "fs.h"
 #include <cmath>
+#include <cstring> // for memcpy
 
 int INE5412_FS::fs_format()
 {
@@ -442,7 +443,123 @@ int INE5412_FS::fs_getsize(int inumber)
 
 int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 {
-	return 0;
+	if (!isMounted)
+	{
+		cout << "File System is not yet mounted!";
+		return -1;
+	}
+
+	union fs_block superblock;
+	/* Reads and stores superblock to block variable */
+	disk->read(0, superblock.data);
+
+	if (inumber > superblock.super.ninodes || inumber == 0)
+	{
+		cout << "Inumber is invalid. (bigger than the amount of inodes or equals to 0.)" << endl;
+		return -1;
+	}
+
+	/* 
+	Finds the exact block and inode index inside of this block
+	This operation will always be valid since we already checked if inumber is valid
+	 */
+	int blockIndex = 1 + inumber / INODES_PER_BLOCK;
+	/* Adding one to the modulo since inumbers always start in 1 */
+	int inodeIndexInBlock = (inumber - 1) % INODES_PER_BLOCK;
+
+	/* Reads the block and stores in block.data */
+	union fs_block blockWithInode;
+	disk->read(blockIndex, blockWithInode.data);
+
+	/* Gets the exact inode requested by the inumber */
+	fs_inode inode = blockWithInode.inode[inodeIndexInBlock];
+
+	if (!inode.isvalid)
+	{
+		cout << "Inode is invalid." << endl;
+		return 0;
+	}
+
+	if (offset > inode.size)
+	{
+		cout << "Offset is invalid (bigger than inode size)." << endl;
+		return 0;
+	}
+
+	/*
+	* Offset + length cannot be bigger then inode size.
+	* If that's the case, we adjust length to include everything until the end
+	* of the inode data.
+	*/
+	if (offset + length > inode.size)
+	{
+		length = inode.size - offset;
+	}
+
+	/* Total read bytes */
+	int readBytes = 0;
+	/* Calculates the starting block for data */
+	int startBlock = offset / Disk::DISK_BLOCK_SIZE;
+	/* Calculates the starting offset within the first block */
+	int startOffset = offset % Disk::DISK_BLOCK_SIZE;
+
+	/* Iterates over direct blocks */
+	for (int i = startBlock; i < POINTERS_PER_INODE && readBytes < length; ++i)
+	{
+		/* 
+		* Reads the inode direct block and stores in blockWithInode.data.
+		* QUESTION: Should I declare another block here to store this data?
+		*/
+		disk->read(blockWithInode.inode[inodeIndexInBlock].direct[i], blockWithInode.data);
+
+		/*
+		* Calculates the number of bytes to copy in this block.
+		* The minimum value between the remaining bytes to read and 
+		* the available space in the current data block.
+		*/
+		int bytesToCopy = min(length - readBytes, Disk::DISK_BLOCK_SIZE - startOffset);
+
+		/* Copy data from the block to the output buffer */
+		memcpy(data + readBytes, blockWithInode.data + startOffset, bytesToCopy);
+
+		/* Updates counter and resets startOffset for subsequent blocks */
+		readBytes += bytesToCopy;
+		startOffset = 0;
+	}
+
+	/* Checks if more data needs to be read from the indirect block */
+	if (readBytes < length && blockWithInode.inode[inodeIndexInBlock].indirect != -1)
+	{
+		/* 
+		* Reads the inode indirect block and stores in blockWithInode.data.
+		* QUESTION: Should I declare another block here to store this data?
+		*/
+		disk->read(blockWithInode.inode[inodeIndexInBlock].indirect, blockWithInode.data);
+
+		/* Iterates over indirect blocks */
+		for (int i = 0; i < POINTERS_PER_BLOCK && readBytes < length; ++i)
+		{
+			/* 
+			* Reads the inode data block and stores in blockWithInode.data.
+			* QUESTION: Should I declare another block here to store this data?
+			*/
+			disk->read(blockWithInode.pointers[i], blockWithInode.data);
+
+			/* 
+			* Calculates the number of bytes to copy in this block.
+			* Added the -0 to adjust the type. Too lazy to search for a better solution rn.
+			*/
+			int bytesToCopy = min(length - readBytes, Disk::DISK_BLOCK_SIZE - 0);
+
+			/* Copies data from the block to the output buffer */
+			memcpy(data + readBytes, blockWithInode.data, bytesToCopy);
+
+			/*  Update counters */
+			readBytes += bytesToCopy;
+		}
+	}
+
+	return readBytes;
 }
 
 int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
