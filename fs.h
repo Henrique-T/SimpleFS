@@ -14,17 +14,6 @@ public:
 	class fs_superblock /*A total of 16 bytes, 4 bytes each.*/
 	{
 	public:
-		/*magic = FS_MAGIC:  rotina de formatação coloca este número nos primeiros bytes do su-
-		* perbloco como um tipo de “assinatura” do sistema de arquivos.
-		* Quando o sistema de arquivos é montado, o
-		* SO procura por este número mágico. Se estiver correto, então assume-se que o disco 
-		* contém um sistema de arquivos correto. Se algum outro número estiver presente, 
-		* então a montagem falha, talvez porque o disco não esteja formatado 
-		* ou contém algum outro tipo de dado.
-		*
-		* ninodeblocks: A rotina de formatação é responsável por escolher ninodeblocks: 
-		* isto deve ser sempre 10 por cento de nblocks, arredondando pra cima.
-		*/
 		unsigned int magic;
 		int nblocks;	  /*Total number of blocks*/
 		int ninodeblocks; /*Number of blocks reserved to store inodes.*/
@@ -72,7 +61,6 @@ public:
 	int find_first_free_block();
 	void erase_entire_inode(int index);
 	void erase_indirect_block(int blockIndex);
-	void debug_inode(int inumber);
 
 private:
 	Disk *disk;
