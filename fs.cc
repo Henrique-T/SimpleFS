@@ -1,6 +1,9 @@
 #include "fs.h"
 #include <cmath>
 #include <cstring> // for memcpy
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 // std::find for vectors
 #include <bits/stdc++.h>
 
@@ -481,6 +484,10 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 	* If that's the case, we adjust length to include everything until the end
 	* of the inode data.
 	*/
+
+	cout << "OFFSET IS: " << offset << endl;
+	cout << "LENGTH IS: " << length << endl;
+
 	if (offset + length > inode.size)
 	{
 		length = inode.size - offset;
@@ -493,9 +500,17 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 	/* Calculates the starting offset within the first block */
 	int startOffset = offset % Disk::DISK_BLOCK_SIZE;
 
+
+	cout << "START BLOCK IS: " << startBlock << endl;
+	cout << "START OFFSET IS: " << startOffset<< endl;
+
 	/* Iterates over direct blocks */
-	for (int i = startBlock; i < POINTERS_PER_INODE && readBytes < length; ++i)
+	for (int i = startBlock; i < POINTERS_PER_INODE; ++i)
 	{
+		if (readBytes == length)
+		{
+			break;
+		}
 		/* 
 		* Reads the inode direct block and stores in blockWithInode.data.
 		* QUESTION: Should I declare another block here to store this data?
@@ -503,6 +518,7 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 		int pointedBlockIndex = blockWithInode.inode[inodeIndexInBlock].direct[i];
 
 		union fs_block pointedBlock;
+		cout << "LENDO BLOCO: " << pointedBlockIndex <<endl;
 		disk->read(pointedBlockIndex, pointedBlock.data);
 
 		/*
@@ -518,6 +534,7 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 		/* Updates counter and resets startOffset for subsequent blocks */
 		readBytes += bytesToCopy;
 		startOffset = 0;
+		startBlock++;
 	}
 
 	/* Checks if more data needs to be read from the indirect block */
@@ -532,14 +549,19 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 		disk->read(indirectBlockIndex, indirectBlock.data);
 
 		/* Iterates over indirect blocks */
-		for (int i = 0; i < POINTERS_PER_BLOCK && readBytes < length; ++i)
+		for (int i = (startBlock - POINTERS_PER_INODE); i < POINTERS_PER_BLOCK; ++i)
 		{
+			if (readBytes == length)
+			{
+				break;
+			}
 			/* 
 			* Reads the inode data block and stores in blockWithInode.data.
 			* QUESTION: Should I declare another block here to store this data?
 			*/
 			int indirectPointedBlockIndex = indirectBlock.pointers[i];
 			union fs_block indirectPointedBlock;
+			cout << "LENDO BLOCO: " << indirectPointedBlockIndex <<endl;
 			disk->read(indirectPointedBlockIndex, indirectPointedBlock.data);
 
 			/* 
@@ -596,10 +618,14 @@ int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
 	}
 
 	/* After beginning overriding the current inode (if there's any data anyway), we free all its blocks to the bitmap */
-	erase_entire_inode(inumber);
+	if (offset == 0)
+	{
+		/* We only erase the inode on the first iteration, that is, when offset equals to 0. */
+		erase_entire_inode(inumber);
+	}
 
-	fs_debug();
-
+	int writeOffset = offset;
+	
 	/* Reads the block and stores in block.data */
 	disk->read(blockWithInodeIndex, blockWithInode.data);
 
@@ -608,99 +634,164 @@ int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
 
 	int writtenBytes = 0;
 
-	/* Iterates over direct blocks */
-	for (int i = 0; i < POINTERS_PER_INODE && writtenBytes < length; ++i)
-	{
-	
-		/* 
-		If the current pointer of inode points to a null block, we are allocating a free block from the bitmap, 
-		replacing the null pointer to the former free block that will be now used.
-		*/
-		int freeBlockIndex = find_first_free_block();
-		if (freeBlockIndex != -1 )
-		{
-			cout << "FREE BLOCK ALLOCATED! NUMBER: " << freeBlockIndex << endl;
-			blockWithInode.inode[inodeIndexInBlock].direct[i] = freeBlockIndex;
-			/* Updating direct pointer of inode from block with the inode */
-			disk->write(blockWithInodeIndex, blockWithInode.data);
-
-			union fs_block freeBlock;
-
-			/*
-			* Calculates the number of bytes to copy in this block.
-			* The minimum value between the remaining bytes to read and 
-			* the available space in the current data block.
-			*/
-			int bytesToCopy = min(length - writtenBytes, Disk::DISK_BLOCK_SIZE - offset);
-
-			/* Copy data from the data pointer to the block */
-			memcpy(freeBlock.data + offset, data + writtenBytes, bytesToCopy);
-
-			/* Updates counter and resets startOffset for subsequent blocks */
-			writtenBytes += bytesToCopy;
-			/* After the first write, the next blocks won't have any offset */
-			offset = 0;
-
-			/* Updating the allocated block and updating it on the bitmap */
-			set_bitmap_bit_by_index(1, freeBlockIndex);
-			disk->write(freeBlockIndex, freeBlock.data);
-		} else {
-			cout << "DISK FULL!!!!" << endl;
-			break;
-		}
-	}
-
-	/* Checks if more data needs to be read from the indirect block */
+	/* 
+	Iterates over direct blocks only in the first iteration.
+	This is because starting from the next iterations (offset > 0), 
+	the direct blocks are already gonna be set and cannot be overriden 
+	*/
 	if (writtenBytes < length)
 	{
+		for (int i = 0; i < POINTERS_PER_INODE; ++i)
+		{
+			if (writtenBytes == length)
+			{
+				break;
+			}
+
+			if (inode.direct[i] == 0)
+			{
+				/* 
+				If the current pointer of inode points to a null block, we are allocating a free block from the bitmap, 
+				replacing the null pointer to the former free block that will be now used.
+				*/
+				int freeBlockIndex = find_first_free_block();
+				if (freeBlockIndex != -1 )
+				{
+					cout << "FREE BLOCK ALLOCATED! NUMBER: " << freeBlockIndex << endl;
+					inode.direct[i] = freeBlockIndex;
+					/* Updating direct pointer of inode from block with the inode */
+					//disk->write(blockWithInodeIndex, blockWithInode.data);
+
+					union fs_block freeBlock;
+
+					/*
+					* Calculates the number of bytes to copy in this block.
+					* The minimum value between the remaining bytes to read and 
+					* the available space in the current data block.
+					*/
+					int bytesToCopy = min(length - writtenBytes, Disk::DISK_BLOCK_SIZE - 0);
+					cout << "BYTES TO COPY: " << bytesToCopy << endl;
+
+					/* Copy data from the data pointer to the block */
+					memcpy(freeBlock.data, data + writtenBytes, bytesToCopy);
+
+					/* Updates counter and resets startOffset for subsequent blocks */
+					writtenBytes += bytesToCopy;
+					/* After the first write, the next blocks won't have any offset */
+					writeOffset = 0;
+
+					/* Updating the allocated block and updating it on the bitmap */
+					set_bitmap_bit_by_index(1, freeBlockIndex);
+					disk->write(freeBlockIndex, freeBlock.data);
+				} else {
+					cout << "DISK FULL!!!!" << endl;
+					break;
+				}
+			} 
+		}
+	}
+	
+	cout << "WRITTEN BYTES IS: " << writtenBytes << endl;
+
+	/* Checks if more data needs to be written in indirect blocks */
+	if (writtenBytes < length && offset != 0)
+	{
 		/* 
 		If the current pointer of inode points to a null block, we are allocating a free block from the bitmap, 
 		replacing the null pointer to the former free block that will be now used.
 		*/
-		int freeBlockIndex = find_first_free_block();
-		if (freeBlockIndex == -1 ) {
+		int indirectBlockIndex;
+
+		if (inode.indirect == 0)
+		{
+			indirectBlockIndex = find_first_free_block();
+			if (indirectBlockIndex == -1 || find_first_free_block() == -1) {
+				cout << "DISK FULL!!!!" << endl;
+				/* If it wasn't possible to allocate any other further free blocks,  then free the indirect block, since it points to nothing */
+			} else {
+				erase_indirect_block(indirectBlockIndex);
+				inode.indirect = indirectBlockIndex;
+			}
+			
+		} else {
+			indirectBlockIndex = inode.indirect;
+		}
+		
+		if (indirectBlockIndex == -1 ) {
 			cout << "DISK FULL!!!!" << endl;
 		} else {
-			/* 
-			* Reads the inode indirect block and stores in blockWithInode.data.
-			* QUESTION: Should I declare another block here to store this data?
-			*/
+			cout << "INDIRECT FREE BLOCK ALLOCATED! NUMBER: " << indirectBlockIndex << endl;
+			inode.indirect = indirectBlockIndex;
+
 			fs_block indirectBlock;
+			/* Allocating certain free block as an indirect block, and blocking from the bitmap */		
+			disk->read(indirectBlockIndex, indirectBlock.data);
+
+			set_bitmap_bit_by_index(1, indirectBlockIndex);
 
 			/* Iterates over indirect blocks */
-			for (int i = 0; i < POINTERS_PER_BLOCK && writtenBytes < length; ++i)
+			for (int i = 0; i < POINTERS_PER_BLOCK; ++i)
 			{
-				/* 
-				* Reads the inode data block and stores in blockWithInode.data.
-				* QUESTION: Should I declare another block here to store this data?
-				*/
-				union fs_block indirectPointedBlock;
-				disk->read(blockWithInode.pointers[i], blockWithInode.data);
+				cout << "WRITTEN BYTES SO FAR: " << writtenBytes << endl;
+				if (writtenBytes == length)
+				{
+					break;
+				}
+				if (indirectBlock.pointers[i] == 0)
+				{
+					int freeBlockIndex = find_first_free_block();
+					if (freeBlockIndex == -1)
+					{
+						cout << "DISK FULL!!!!" << endl;
+						break;
+					}
+					cout << "FREE BLOCK POINTED BY INDIRECT BLOCK ALLOCATED! NUMBER: " << freeBlockIndex << endl;
+					erase_indirect_block(freeBlockIndex);
 
-				/* 
-				* Calculates the number of bytes to copy in this block.
-				* Added the -0 to adjust the type. Too lazy to search for a better solution rn.
-				*/
-				int bytesToCopy = min(length - writtenBytes, Disk::DISK_BLOCK_SIZE - 0);
+					/* Setting allocated block to pointer of indirect block */
+					indirectBlock.pointers[i] = freeBlockIndex;
 
-				/* Copies data from the block to the output buffer */
-				memcpy(blockWithInode.data, data + writtenBytes, bytesToCopy);
+					union fs_block indirectPointedBlock;
 
-				/*  Update counters */
-				writtenBytes += bytesToCopy;
+					set_bitmap_bit_by_index(1, freeBlockIndex);
+
+					cout << "LENGTH INSIDE : " << length << endl;
+
+					int bytesToCopy = min(length - writtenBytes, Disk::DISK_BLOCK_SIZE - 0);
+
+					cout << "WRITE OFFSET: " << writeOffset << endl;
+
+					/* Copies data from the block to the output buffer */
+					memcpy(indirectPointedBlock.data, data + writtenBytes, bytesToCopy);
+
+					cout << "WRITTEN ON INDIRECT BLOCK: " << bytesToCopy << endl;
+
+					disk->write(freeBlockIndex, indirectPointedBlock.data);
+
+					/*  Update counters */
+					writtenBytes += bytesToCopy;
+				}
 			}
+			disk->write(indirectBlockIndex, indirectBlock.data);
 		}
 	}
 
-	/* Reads the block and stores in block.data */
-	union fs_block blockWithInodeUpdated;
-	disk->read(blockWithInodeIndex, blockWithInodeUpdated.data);
 
 	/* Gets the exact inode requested by the inumber */
-	inode = blockWithInodeUpdated.inode[inodeIndexInBlock];
-	inode.size = writtenBytes;
+	cout << "PREVIOUS INODE SIZE" << inode.size << endl;
+	if (offset == 0)
+	{
+		inode.size = writtenBytes;
+	} else {
+		inode.size += writtenBytes;
+	}
+	cout << "LATER INODE SIZE" << inode.size << endl;
+	
 	blockWithInode.inode[inodeIndexInBlock] = inode;
 	disk->write(blockWithInodeIndex, blockWithInode.data);
+	cout << "GETTING TO END" << endl;
+	fs_debug();
+	debug_inode(inumber);
 
 	return writtenBytes;
 }
@@ -768,7 +859,7 @@ int INE5412_FS::find_first_free_block()
 	int startIndex = superblock.super.ninodeblocks + 1;
 
 	int pos = -1;
-	for (int i = startIndex + 1; i < bitmap.size(); i++)
+	for (int i = startIndex; i < bitmap.size(); i++)
 	{
 		if (bitmap.at(i) == 0)
 		{
@@ -779,7 +870,7 @@ int INE5412_FS::find_first_free_block()
 
 	if (pos == -1)
 	{
-		cout << "ERROR! There are no free blocks!";
+		cout << "ERROR! There are no free blocks!" << endl;
 	}
 	return pos;
 }
@@ -796,9 +887,6 @@ void INE5412_FS::erase_entire_inode(int inumber)
 
 	/* Gets the exact inode requested by the inumber */
 	fs_inode inode = blockWithInode.inode[inodeIndexInBlock];
-
-	/* Erasing all pointed blocks data */
-	char empty_data[Disk::DISK_BLOCK_SIZE];
 
 	for (int k = 0; k < POINTERS_PER_INODE; k++)
 	{
@@ -827,6 +915,56 @@ void INE5412_FS::erase_entire_inode(int inumber)
 		set_bitmap_bit_by_index(0, inode.indirect);
 		inode.indirect = 0;
 	}
+	inode.size = 0;
+
 	blockWithInode.inode[inodeIndexInBlock] = inode;
 	disk->write(blockWithInodeIndex, blockWithInode.data);
+}
+
+void INE5412_FS::erase_indirect_block(int blockIndex)
+{
+	/* TO BE CALLED WHEN ALLOCATING A BLOCK TO BE AN INDIRECT BLOCK, so we avoid utilizing 'dirty' blocks */
+	fs_block emptyBlock;
+	for (int i = 0; i < POINTERS_PER_BLOCK; ++i) {
+        emptyBlock.pointers[i] = 0;
+    }
+	disk->write(blockIndex, emptyBlock.data);
+}
+
+void INE5412_FS::debug_inode(int inumber)
+{
+	int blockWithInodeIndex = 1 + inumber / INODES_PER_BLOCK;
+	/* Adding one to the modulo since inumbers always start in 1 */
+	int inodeIndexInBlock = (inumber - 1) % INODES_PER_BLOCK;
+
+	/* Reads the block and stores in block.data */
+	union fs_block blockWithInode;
+	disk->read(blockWithInodeIndex, blockWithInode.data);
+
+	/* Gets the exact inode requested by the inumber */
+	fs_inode inode = blockWithInode.inode[inodeIndexInBlock];
+
+	for (int k = 0; k < POINTERS_PER_INODE; k++)
+	{
+		if (inode.direct[k] != 0)
+		{
+			cout << "DIRECT BLOCK No: " << inode.direct[k] << endl;
+		}
+	}
+
+	if (inode.indirect != 0)
+	{
+		int indirectBlockIndex = inode.indirect;
+		union fs_block indirectBlock;
+		disk->read(indirectBlockIndex, indirectBlock.data);
+
+		/* Iterates over indirect blocks and set them to zero */
+		for (int k = 0; k < POINTERS_PER_BLOCK; k++)
+		{
+			if (indirectBlock.pointers[k] != 0)
+			{
+				cout << "INDIRECT BLOCK No: " << indirectBlock.pointers[k] << endl;
+			}
+		}
+	}
 }

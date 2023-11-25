@@ -71,6 +71,8 @@ public:
 	void set_bitmap_bit_by_index(bool bit, int index);
 	int find_first_free_block();
 	void erase_entire_inode(int index);
+	void erase_indirect_block(int blockIndex);
+	void debug_inode(int inumber);
 
 private:
 	Disk *disk;
